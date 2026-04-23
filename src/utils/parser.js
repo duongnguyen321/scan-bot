@@ -100,11 +100,11 @@ function formatTxMessage(tx) {
   if (tx.status.includes('Thành công')) {
     const numericAmount = parseFloat(tx.amount) || 0;
     if (numericAmount < 1000) {
-      statusDisplay += '\n_yếu quá phải cố gắng thêm_';
+      statusDisplay += '\n\n> 🥲 *YẾU QUÁ PHẢI CỐ GẮNG THÊM*';
     } else if (numericAmount < 5000) {
-      statusDisplay += '\n_tềnh tàng thế thôi_';
+      statusDisplay += '\n\n> 🍻 *TỀNH TÀNG THẾ THÔI*';
     } else {
-      statusDisplay += '\n_chúc ông chủ thắng lớn_';
+      statusDisplay += "\n\n> 🎉 *CHÚC ĐẠI GIA NNGÀY MỚI 8386 * 🚀";
     }
   }
 
@@ -113,12 +113,12 @@ function formatTxMessage(tx) {
     `🔗 Network: ${tx.network}\n` +
     `🪙 Token: ${tx.token}\n` +
     `💰 Số tiền: ${tx.amount} ${tx.token}\n` +
-    `👤 Từ ví: ${shortFrom}\n` +
-    `💼 Đến ví: ${shortTo}${tx.toLabel ? ` (${tx.toLabel})` : ''}\n` +
+    `👤 Từ ví: \`${shortFrom}\`\n` +
+    `💼 Đến ví: \`${shortTo}\`${tx.toLabel ? ` (${tx.toLabel})` : ''}\n` +
     `🕐 Thời gian: ${tx.timestamp}\n` +
     `⛽ Phí: ${tx.fee}\n` +
     `📦 Block: ${tx.block || 'N/A'}\n` +
-    `#️⃣ Hash: ${shortHash}\n\n` +
+    `#️⃣ Hash: \`${shortHash}\`\n\n` +
     `🔍 [Xem trên Explorer](${tx.explorerUrl})`
   );
 }
