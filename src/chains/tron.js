@@ -1,7 +1,16 @@
 const axios = require('axios');
 
-// Primary: official Tronscan API. Fallback: apilist mirror
-const BASE_URL = 'https://apilist.tronscan.org/api';
+const BASE_URL = 'https://apilist.tronscanapi.com/api';
+
+const TRON_CONTRACT_TYPES = {
+  1: 'TRX Transfer',
+  31: 'TRC20 Transfer',
+  54: 'Swap',
+  55: 'Smart Contract',
+  57: 'Freeze Balance',
+  58: 'Resource Delegate',
+  59: 'Resource Undelegate',
+};
 
 function getTronscanHeaders() {
   const headers = { 'Accept': 'application/json' };
@@ -19,18 +28,11 @@ function getTronscanHeaders() {
 async function getTronTransaction(txHash) {
   try {
     const headers = getTronscanHeaders();
-    const [txRes, transferRes] = await Promise.all([
-      axios.get(`${BASE_URL}/transaction-info`, {
-        params: { hash: txHash },
-        headers,
-        timeout: 10000,
-      }),
-      axios.get(`${BASE_URL}/contract/transaction`, {
-        params: { limit: 1, start: 0, hash: txHash },
-        headers,
-        timeout: 10000,
-      }),
-    ]);
+    const txRes = await axios.get(`${BASE_URL}/transaction-info`, {
+      params: { hash: txHash },
+      headers,
+      timeout: 10000,
+    });
 
     const tx = txRes.data;
     if (!tx || (!tx.hash && !tx.txID)) return null;
@@ -39,7 +41,6 @@ async function getTronTransaction(txHash) {
 
     // Try to extract TRC20 token transfer info
     const trc20Transfers = tx.trc20TransferInfo || [];
-    const contractData = transferRes.data?.data?.[0];
 
     if (trc20Transfers.length > 0) {
       // TRC20 token transfer
@@ -76,18 +77,32 @@ async function getTronTransaction(txHash) {
           : "0 TRX",
         block: tx.block,
         explorerUrl: `https://tronscan.org/#/transaction/${tx.hash}`,
-        contractData,
       };
     }
 
-    // Native TRX transfer
-    const trxAmount = (tx.contractData?.amount || 0) / 1_000_000;
+    const contractData = tx.contractData || {};
+    const contractType = tx.contractType;
+    const toAddress =
+      contractData.to_address ||
+      contractData.toAddress ||
+      contractData.receiver_address ||
+      tx.toAddress ||
+      null;
+    const amountSun =
+      contractData.amount ??
+      contractData.balance ??
+      0;
+    const amount = typeof contractData.resourceValue === 'number'
+      ? contractData.resourceValue.toFixed(2)
+      : (amountSun / 1_000_000).toFixed(6);
+    const token = contractData.resource || (amountSun > 0 ? 'TRX' : (TRON_CONTRACT_TYPES[contractType] || 'TRON'));
+
     return {
-      network: 'TRC20',
-      token: 'TRX',
-      amount: trxAmount.toFixed(6),
+      network: 'TRON',
+      token,
+      amount,
       from: tx.ownerAddress,
-      to: tx.contractData?.to_address || tx.toAddress,
+      to: toAddress,
       toLabel: null,
       hash: tx.hash,
       timestamp: new Date(tx.timestamp).toISOString().replace('T', ' ').substring(0, 19),

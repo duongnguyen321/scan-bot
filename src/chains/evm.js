@@ -4,45 +4,50 @@ const EVM_CHAINS = {
   ETH: {
     name: 'Ethereum (ERC20)',
     network: 'ERC20',
-    apiUrl: 'https://api.etherscan.io/api',
+    apiUrl: 'https://api.etherscan.io/v2/api',
     explorerUrl: 'https://etherscan.io/tx',
     apiKeyEnv: 'ETHERSCAN_API_KEY',
+    chainId: 1,
     nativeToken: 'ETH',
     decimals: 18,
   },
   BEP20: {
     name: 'BNB Smart Chain (BEP20)',
     network: 'BEP20',
-    apiUrl: 'https://api.bscscan.com/api',
+    apiUrl: 'https://api.bscscan.com/v2/api',
     explorerUrl: 'https://bscscan.com/tx',
     apiKeyEnv: 'BSCSCAN_API_KEY',
+    chainId: 56,
     nativeToken: 'BNB',
     decimals: 18,
   },
   BSC: {
     name: 'BNB Smart Chain (BEP20)',
     network: 'BEP20',
-    apiUrl: 'https://api.bscscan.com/api',
+    apiUrl: 'https://api.bscscan.com/v2/api',
     explorerUrl: 'https://bscscan.com/tx',
     apiKeyEnv: 'BSCSCAN_API_KEY',
+    chainId: 56,
     nativeToken: 'BNB',
     decimals: 18,
   },
   POLYGON: {
     name: 'Polygon (MATIC)',
     network: 'Polygon',
-    apiUrl: 'https://api.polygonscan.com/api',
+    apiUrl: 'https://api.polygonscan.com/v2/api',
     explorerUrl: 'https://polygonscan.com/tx',
     apiKeyEnv: 'POLYGONSCAN_API_KEY',
+    chainId: 137,
     nativeToken: 'MATIC',
     decimals: 18,
   },
   ARBITRUM: {
     name: 'Arbitrum One',
     network: 'Arbitrum',
-    apiUrl: 'https://api.arbiscan.io/api',
+    apiUrl: 'https://api.arbiscan.io/v2/api',
     explorerUrl: 'https://arbiscan.io/tx',
     apiKeyEnv: 'ARBISCAN_API_KEY',
+    chainId: 42161,
     nativeToken: 'ETH',
     decimals: 18,
   },
@@ -50,6 +55,90 @@ const EVM_CHAINS = {
 
 function fromWei(value, decimals = 18) {
   return (parseFloat(value) / Math.pow(10, decimals)).toFixed(6);
+}
+
+async function etherscanRequest(chain, apiKey, params) {
+  const response = await axios.get(chain.apiUrl, {
+    params: {
+      chainid: chain.chainId,
+      ...params,
+      apikey: apiKey,
+    },
+    timeout: 10000,
+  });
+
+  if (response.data?.status === '0' && response.data?.message === 'NOTOK') {
+    throw new Error(response.data.result || 'Explorer API request failed');
+  }
+
+  return response.data?.result;
+}
+
+function parseErc20Address(topicValue, fallback) {
+  if (!topicValue || typeof topicValue !== 'string' || topicValue.length < 40) {
+    return fallback;
+  }
+
+  return `0x${topicValue.slice(-40)}`;
+}
+
+function decodeAbiString(hexValue) {
+  if (!hexValue || hexValue === '0x') return null;
+
+  const hex = hexValue.startsWith('0x') ? hexValue.slice(2) : hexValue;
+  if (!hex) return null;
+
+  // bytes32-style string
+  if (hex.length === 64) {
+    const value = Buffer.from(hex, 'hex').toString('utf8').replace(/\0+$/g, '').trim();
+    return value || null;
+  }
+
+  // dynamic ABI string
+  if (hex.length >= 192) {
+    const length = parseInt(hex.slice(64, 128), 16);
+    if (!Number.isNaN(length) && length > 0) {
+      const valueHex = hex.slice(128, 128 + length * 2);
+      const value = Buffer.from(valueHex, 'hex').toString('utf8').replace(/\0+$/g, '').trim();
+      return value || null;
+    }
+  }
+
+  return null;
+}
+
+async function getErc20Metadata(chain, apiKey, contractAddress) {
+  try {
+    const [symbolHex, decimalsHex] = await Promise.all([
+      etherscanRequest(chain, apiKey, {
+        module: 'proxy',
+        action: 'eth_call',
+        to: contractAddress,
+        data: '0x95d89b41',
+        tag: 'latest',
+      }),
+      etherscanRequest(chain, apiKey, {
+        module: 'proxy',
+        action: 'eth_call',
+        to: contractAddress,
+        data: '0x313ce567',
+        tag: 'latest',
+      }),
+    ]);
+
+    const symbol = decodeAbiString(symbolHex) || 'TOKEN';
+    const decimals = decimalsHex ? parseInt(decimalsHex, 16) : 18;
+
+    return {
+      symbol,
+      decimals: Number.isNaN(decimals) ? 18 : decimals,
+    };
+  } catch {
+    return {
+      symbol: 'TOKEN',
+      decimals: 18,
+    };
+  }
 }
 
 /**
@@ -64,31 +153,19 @@ async function getEvmTransaction(txHash, chainKey) {
 
   try {
     // Fetch raw TX
-    const txRes = await axios.get(chain.apiUrl, {
-      params: {
-        module: 'proxy',
-        action: 'eth_getTransactionByHash',
-        txhash: txHash,
-        apikey: apiKey,
-      },
-      timeout: 10000,
+    const tx = await etherscanRequest(chain, apiKey, {
+      module: 'proxy',
+      action: 'eth_getTransactionByHash',
+      txhash: txHash,
     });
-
-    const tx = txRes.data?.result;
     if (!tx) return null;
 
     // Fetch TX receipt for status
-    const receiptRes = await axios.get(chain.apiUrl, {
-      params: {
-        module: 'proxy',
-        action: 'eth_getTransactionReceipt',
-        txhash: txHash,
-        apikey: apiKey,
-      },
-      timeout: 10000,
+    const receipt = await etherscanRequest(chain, apiKey, {
+      module: 'proxy',
+      action: 'eth_getTransactionReceipt',
+      txhash: txHash,
     });
-
-    const receipt = receiptRes.data?.result;
     // Etherscan returns '0x1' (string) or 1 (number) for success
     const rawStatus = receipt?.status;
     const isSuccess = rawStatus === '0x1' || rawStatus === 1 || rawStatus === '1';
@@ -96,26 +173,23 @@ async function getEvmTransaction(txHash, chainKey) {
     const status = receipt == null ? '⏳ Đang xử lý' : (isSuccess ? '✅ Thành công' : '❌ Thất bại');
 
     // Get block timestamp
-    const blockRes = await axios.get(chain.apiUrl, {
-      params: {
-        module: 'proxy',
-        action: 'eth_getBlockByNumber',
-        tag: tx.blockNumber,
-        boolean: false,
-        apikey: apiKey,
-      },
-      timeout: 10000,
-    });
+    const block = tx.blockNumber ? await etherscanRequest(chain, apiKey, {
+      module: 'proxy',
+      action: 'eth_getBlockByNumber',
+      tag: tx.blockNumber,
+      boolean: false,
+    }) : null;
 
-    const blockTimestamp = blockRes.data?.result?.timestamp
-      ? new Date(parseInt(blockRes.data.result.timestamp, 16) * 1000)
+    const blockTimestamp = block?.timestamp
+      ? new Date(parseInt(block.timestamp, 16) * 1000)
           .toISOString()
           .replace('T', ' ')
           .substring(0, 19)
       : 'N/A';
 
     const gasUsed = receipt?.gasUsed ? parseInt(receipt.gasUsed, 16) : 0;
-    const gasPrice = tx.gasPrice ? parseInt(tx.gasPrice, 16) : 0;
+    const gasPriceHex = receipt?.effectiveGasPrice || tx.gasPrice;
+    const gasPrice = gasPriceHex ? parseInt(gasPriceHex, 16) : 0;
     const feeWei = gasUsed * gasPrice;
     const fee = fromWei(feeWei) + ` ${chain.nativeToken}`;
 
@@ -133,13 +207,13 @@ async function getEvmTransaction(txHash, chainKey) {
         timestamp: blockTimestamp,
         status,
         fee,
-        block: parseInt(tx.blockNumber, 16),
+        block: tx.blockNumber ? parseInt(tx.blockNumber, 16) : 'N/A',
         explorerUrl: `${chain.explorerUrl}/${txHash}`,
       };
     }
 
-    // Try to decode ERC20 transfer from logs
-    const erc20Transfer = await getErc20TransferFromLogs(txHash, chain, apiKey, blockTimestamp, status, fee, tx);
+    // Try to decode ERC20 transfer from receipt logs
+    const erc20Transfer = await getErc20TransferFromReceipt(chain, apiKey, blockTimestamp, status, fee, tx, receipt, txHash);
     if (erc20Transfer) return erc20Transfer;
 
     // Fallback: return generic info
@@ -154,7 +228,7 @@ async function getEvmTransaction(txHash, chainKey) {
       timestamp: blockTimestamp,
       status,
       fee,
-      block: parseInt(tx.blockNumber, 16),
+      block: tx.blockNumber ? parseInt(tx.blockNumber, 16) : 'N/A',
       explorerUrl: `${chain.explorerUrl}/${txHash}`,
     };
   } catch (err) {
@@ -163,52 +237,26 @@ async function getEvmTransaction(txHash, chainKey) {
   }
 }
 
-async function getErc20TransferFromLogs(txHash, chain, apiKey, blockTimestamp, status, fee, tx) {
+async function getErc20TransferFromReceipt(chain, apiKey, blockTimestamp, status, fee, tx, receipt, txHash) {
   try {
     // ERC20 Transfer event topic
     const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+    const logs = receipt?.logs || [];
+    const log = logs.find((entry) => entry?.topics?.[0] === TRANSFER_TOPIC && entry?.topics?.length >= 3);
+    if (!log) return null;
 
-    const logsRes = await axios.get(chain.apiUrl, {
-      params: {
-        module: 'logs',
-        action: 'getLogs',
-        txhash: txHash,
-        topic0: TRANSFER_TOPIC,
-        apikey: apiKey,
-      },
-      timeout: 10000,
-    });
-
-    const logs = logsRes.data?.result;
-    if (!logs || logs.length === 0) return null;
-
-    const log = logs[0];
     const contractAddress = log.address;
-
-    // Get token info
-    const tokenRes = await axios.get(chain.apiUrl, {
-      params: {
-        module: 'token',
-        action: 'tokeninfo',
-        contractaddress: contractAddress,
-        apikey: apiKey,
-      },
-      timeout: 10000,
-    });
-
-    const tokenInfo = tokenRes.data?.result?.[0];
-    const symbol = tokenInfo?.symbol || 'TOKEN';
-    const decimals = parseInt(tokenInfo?.divisor || '18');
-    const rawAmount = parseInt(log.data, 16);
-    const amount = (rawAmount / Math.pow(10, decimals)).toFixed(2);
+    const tokenInfo = await getErc20Metadata(chain, apiKey, contractAddress);
+    const rawAmount = parseInt(log.data || '0x0', 16);
+    const amount = (rawAmount / Math.pow(10, tokenInfo.decimals)).toFixed(2);
 
     // Decode from/to from topics
-    const from = log.topics[1] ? '0x' + log.topics[1].slice(26) : tx.from;
-    const to = log.topics[2] ? '0x' + log.topics[2].slice(26) : tx.to;
+    const from = parseErc20Address(log.topics[1], tx.from);
+    const to = parseErc20Address(log.topics[2], tx.to);
 
     return {
       network: chain.network,
-      token: symbol,
+      token: tokenInfo.symbol,
       amount,
       from,
       to,
@@ -217,7 +265,7 @@ async function getErc20TransferFromLogs(txHash, chain, apiKey, blockTimestamp, s
       timestamp: blockTimestamp,
       status,
       fee,
-      block: parseInt(log.blockNumber, 16),
+      block: log.blockNumber ? parseInt(log.blockNumber, 16) : (tx.blockNumber ? parseInt(tx.blockNumber, 16) : 'N/A'),
       explorerUrl: `${chain.explorerUrl}/${txHash}`,
     };
   } catch {
