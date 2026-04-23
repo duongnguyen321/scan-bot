@@ -69,38 +69,6 @@ function parseUserInput(text) {
 }
 
 // ---------------------------------------------------------------------------
-// Amount-tier helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Find the first tier whose [from, to] range contains the given amount.
- * @param {number} amount
- * @param {Array<{from:number, to:number, template:string}>} tiers
- * @returns {{from:number, to:number, template:string}|null}
- */
-function getAmountTier(amount, tiers) {
-  if (!Array.isArray(tiers)) return null;
-  for (const tier of tiers) {
-    if (amount >= tier.from && amount <= tier.to) {
-      return tier;
-    }
-  }
-  return null;
-}
-
-/**
- * Replace all {placeholder} tokens in a template string.
- * @param {string} template
- * @param {Record<string, string>} vars
- * @returns {string}
- */
-function applyTemplate(template, vars) {
-  return template.replace(/\{(\w+)\}/g, (_, key) =>
-    Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : `{${key}}`
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Formatters
 // ---------------------------------------------------------------------------
 
@@ -108,12 +76,11 @@ function applyTemplate(template, vars) {
  * Format transaction result into a Telegram message.
  *
  * @param {object|null} tx  - Normalised tx object returned by chain adapters
- * @param {Array<{from:number, to:number, template:string}>} [tiers] - Optional amount tiers
  * @returns {string}
  */
-function formatTxMessage(tx, tiers, renderTierFn) {
+function formatTxMessage(tx) {
   if (!tx) {
-    return '[!] *Không tìm thấy giao dịch*\nVui lòng kiểm tra lại hash hoặc network.';
+    return '❌ *Không tìm thấy giao dịch*\nVui lòng kiểm tra lại hash hoặc network.';
   }
 
   const shortHash = tx.hash.length > 20
@@ -128,48 +95,31 @@ function formatTxMessage(tx, tiers, renderTierFn) {
     ? tx.to.substring(0, 8) + '...' + tx.to.substring(tx.to.length - 8)
     : 'N/A';
 
-  // Full values for copyable code blocks
-  const fullHash = tx.hash;
-  const fullFrom = tx.from || 'N/A';
-  const fullTo   = tx.to   || 'N/A';
+  let statusDisplay = tx.status;
 
-  const numericAmount = parseFloat(tx.amount) || 0;
-  const tier = getAmountTier(numericAmount, tiers);
-
-  if (tier && typeof renderTierFn === 'function') {
-    const vars = {
-      status:      tx.status,
-      amount:      tx.amount,
-      token:       tx.token,
-      network:     tx.network,
-      from:        shortFrom,
-      fromFull:    fullFrom,
-      to:          shortTo,
-      toFull:      fullTo,
-      toLabel:     tx.toLabel ? ` _(${tx.toLabel})_` : '',
-      timestamp:   tx.timestamp,
-      fee:         tx.fee,
-      block:       tx.block || 'N/A',
-      hash:        shortHash,
-      hashFull:    fullHash,
-      explorerUrl: tx.explorerUrl,
-    };
-    return renderTierFn(tier, vars);
+  if (tx.status.includes('Thành công')) {
+    const numericAmount = parseFloat(tx.amount) || 0;
+    if (numericAmount < 1000) {
+      statusDisplay += '\n_yếu quá phải cố gắng thêm_';
+    } else if (numericAmount < 5000) {
+      statusDisplay += '\n_tềnh tàng thế thôi_';
+    } else {
+      statusDisplay += '\n_chúc ông chủ thắng lớn_';
+    }
   }
 
-  // Default layout (no tier matched)
   return (
-    `${tx.status}\n\n` +
-    `- *Network:* \`${tx.network}\`\n` +
-    `- *Token:* *${tx.token}*\n` +
-    `- *Số tiền:* *${tx.amount} ${tx.token}*\n` +
-    `- *Từ ví:* ${shortFrom}\n  \`${fullFrom}\`\n` +
-    `- *Đến ví:* ${shortTo}${tx.toLabel ? ` _(${tx.toLabel})_` : ''}\n  \`${fullTo}\`\n` +
-    `- *Thời gian:* ${tx.timestamp}\n` +
-    `- *Phí:* ${tx.fee}\n` +
-    `- *Block:* ${tx.block || 'N/A'}\n` +
-    `- *Hash:* ${shortHash}\n  \`${fullHash}\`\n\n` +
-    `[Xem trên Explorer](${tx.explorerUrl})`
+    `${statusDisplay}\n\n` +
+    `🔗 Network: ${tx.network}\n` +
+    `🪙 Token: ${tx.token}\n` +
+    `💰 Số tiền: ${tx.amount} ${tx.token}\n` +
+    `👤 Từ ví: ${shortFrom}\n` +
+    `💼 Đến ví: ${shortTo}${tx.toLabel ? ` (${tx.toLabel})` : ''}\n` +
+    `🕐 Thời gian: ${tx.timestamp}\n` +
+    `⛽ Phí: ${tx.fee}\n` +
+    `📦 Block: ${tx.block || 'N/A'}\n` +
+    `#️⃣ Hash: ${shortHash}\n\n` +
+    `🔍 [Xem trên Explorer](${tx.explorerUrl})`
   );
 }
 
@@ -195,4 +145,4 @@ function formatHelpMessage() {
   );
 }
 
-module.exports = { parseUserInput, formatTxMessage, formatHelpMessage, getAmountTier };
+module.exports = { parseUserInput, formatTxMessage, formatHelpMessage };

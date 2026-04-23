@@ -1,7 +1,6 @@
 const { getTronTransaction } = require('../chains/tron');
 const { getEvmTransaction } = require('../chains/evm');
 const { parseUserInput, formatTxMessage, formatHelpMessage } = require('../utils/parser');
-const { AMOUNT_TIERS, renderTier } = require('../config/amountTiers');
 
 const EVM_NETWORKS = new Set(['ETH', 'BEP20', 'POLYGON', 'ARBITRUM']);
 
@@ -82,7 +81,7 @@ async function handleTxMessage(ctx) {
 
     await ctx.deleteMessage(loadingMsg.message_id).catch(() => {});
 
-    const message = formatTxMessage(txData, AMOUNT_TIERS, renderTier);
+    const message = formatTxMessage(txData);
     await smartReply(ctx, message);
   } catch (err) {
     await ctx.deleteMessage(loadingMsg.message_id).catch(() => {});

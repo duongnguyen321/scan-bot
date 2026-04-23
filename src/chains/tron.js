@@ -59,6 +59,13 @@ async function getTronTransaction(txHash) {
         amount = '0';
       }
 
+      let statusStr = '❌ Thất bại';
+      if (tx.contractRet === 'SUCCESS') {
+        statusStr = tx.confirmed ? '✅ Thành công' : '⏳ Đang xác nhận';
+      } else if (!tx.contractRet) {
+        statusStr = '⏳ Đang xử lý';
+      }
+
       return {
         network: "TRC20",
         token: transfer.symbol || "USDT",
@@ -71,7 +78,7 @@ async function getTronTransaction(txHash) {
           .toISOString()
           .replace("T", " ")
           .substring(0, 19),
-        status: tx.contractRet === "SUCCESS" ? "✅ Thành công" : "❌ Thất bại",
+        status: statusStr,
         fee: tx.cost?.fee
           ? (tx.cost.fee / 1_000_000).toFixed(6) + " TRX"
           : "0 TRX",
@@ -97,6 +104,13 @@ async function getTronTransaction(txHash) {
       : (amountSun / 1_000_000).toFixed(6);
     const token = contractData.resource || (amountSun > 0 ? 'TRX' : (TRON_CONTRACT_TYPES[contractType] || 'TRON'));
 
+    let statusStr = '❌ Thất bại';
+    if (tx.contractRet === 'SUCCESS') {
+      statusStr = tx.confirmed ? '✅ Thành công' : '⏳ Đang xác nhận';
+    } else if (!tx.contractRet) {
+      statusStr = '⏳ Đang xử lý';
+    }
+
     return {
       network: 'TRON',
       token,
@@ -106,7 +120,7 @@ async function getTronTransaction(txHash) {
       toLabel: null,
       hash: tx.hash,
       timestamp: new Date(tx.timestamp).toISOString().replace('T', ' ').substring(0, 19),
-      status: tx.contractRet === 'SUCCESS' ? '✅ Thành công' : '❌ Thất bại',
+      status: statusStr,
       fee: tx.cost?.fee ? (tx.cost.fee / 1_000_000).toFixed(6) + ' TRX' : '0 TRX',
       block: tx.block,
       explorerUrl: `https://tronscan.org/#/transaction/${tx.hash}`,

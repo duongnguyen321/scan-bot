@@ -166,11 +166,30 @@ async function getEvmTransaction(txHash, chainKey) {
       action: 'eth_getTransactionReceipt',
       txhash: txHash,
     });
-    // Etherscan returns '0x1' (string) or 1 (number) for success
-    const rawStatus = receipt?.status;
-    const isSuccess = rawStatus === '0x1' || rawStatus === 1 || rawStatus === '1';
-    // If receipt is null (pending tx), treat as unknown
-    const status = receipt == null ? '⏳ Đang xử lý' : (isSuccess ? '✅ Thành công' : '❌ Thất bại');
+
+    // Fetch latest block to check confirmations
+    const latestBlockHex = await etherscanRequest(chain, apiKey, {
+      module: 'proxy',
+      action: 'eth_blockNumber',
+    }).catch(() => null);
+
+    const latestBlock = latestBlockHex ? parseInt(latestBlockHex, 16) : 0;
+    
+    let status = '⏳ Đang xử lý';
+    if (receipt) {
+      const rawStatus = receipt.status;
+      const isSuccess = rawStatus === '0x1' || rawStatus === 1 || rawStatus === '1';
+      
+      if (isSuccess) {
+        const txBlock = tx.blockNumber ? parseInt(tx.blockNumber, 16) : 0;
+        const confirmations = (latestBlock > 0 && txBlock > 0) ? Math.max(0, latestBlock - txBlock) : 0;
+        
+        // 12 block confirmations as standard safety threshold
+        status = confirmations >= 12 ? '✅ Thành công' : '⏳ Đang xác nhận';
+      } else {
+        status = '❌ Thất bại';
+      }
+    }
 
     // Get block timestamp
     const block = tx.blockNumber ? await etherscanRequest(chain, apiKey, {
