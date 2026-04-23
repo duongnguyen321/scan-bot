@@ -1,25 +1,52 @@
 const { getTronTransaction } = require('../chains/tron');
 const { getEvmTransaction } = require('../chains/evm');
 const { parseUserInput, formatTxMessage, formatHelpMessage } = require('../utils/parser');
+const { AMOUNT_TIERS, renderTier } = require('../config/amountTiers');
 
 const EVM_NETWORKS = new Set(['ETH', 'BEP20', 'POLYGON', 'ARBITRUM']);
 
+/** True when ctx is from a group or supergroup */
+function isGroupChat(ctx) {
+  const type = ctx.chat?.type;
+  return type === 'group' || type === 'supergroup';
+}
+
 /**
- * Main handler for incoming Telegram messages
+ * Reply helper — in group chats always quote the triggering message so the
+ * reply is threaded to the right user.
+ */
+async function smartReply(ctx, message, options = {}) {
+  if (isGroupChat(ctx)) {
+    return ctx.replyWithMarkdown(message, {
+      reply_to_message_id: ctx.message.message_id,
+      disable_web_page_preview: true,
+      ...options,
+    });
+  }
+  return ctx.replyWithMarkdown(message, {
+    disable_web_page_preview: true,
+    ...options,
+  });
+}
+
+/**
+ * Main handler for incoming Telegram messages (private + group)
  * @param {import('telegraf').Context} ctx
  */
 async function handleTxMessage(ctx) {
   const text = ctx.message?.text;
   if (!text) return;
 
-  // Help command
+  // Help / start commands — reply in all chat types
   if (text.startsWith('/start') || text.startsWith('/help')) {
-    return ctx.replyWithMarkdown(formatHelpMessage());
+    return smartReply(ctx, formatHelpMessage());
   }
 
   const parsed = parseUserInput(text);
 
   if (!parsed) {
+    // In groups: stay silent to avoid spamming every non-hash message
+    if (isGroupChat(ctx)) return;
     return ctx.replyWithMarkdown(
       '⚠️ *Không nhận dạng được giao dịch*\n\nGửi /help để xem hướng dẫn.'
     );
@@ -27,8 +54,12 @@ async function handleTxMessage(ctx) {
 
   const { network, txHash } = parsed;
 
-  // Send loading message
-  const loadingMsg = await ctx.reply('🔍 Đang kiểm tra giao dịch...');
+  // Send loading indicator (reply-style in groups)
+  const loadingMsg = isGroupChat(ctx)
+    ? await ctx.reply('Đang kiểm tra giao dịch...', {
+        reply_to_message_id: ctx.message.message_id,
+      })
+    : await ctx.reply('Đang kiểm tra giao dịch...');
 
   try {
     let txData = null;
@@ -49,17 +80,17 @@ async function handleTxMessage(ctx) {
       }
     }
 
-    // Delete loading message
     await ctx.deleteMessage(loadingMsg.message_id).catch(() => {});
 
-    const message = formatTxMessage(txData);
-    await ctx.replyWithMarkdown(message, {
-      disable_web_page_preview: true,
-    });
+    const message = formatTxMessage(txData, AMOUNT_TIERS, renderTier);
+    await smartReply(ctx, message);
   } catch (err) {
     await ctx.deleteMessage(loadingMsg.message_id).catch(() => {});
     console.error('[Handler] Error:', err.message);
-    await ctx.reply('❌ Lỗi server. Vui lòng thử lại sau.');
+    const errMsg = 'Bot đang ăn cơm, đợi xíu thử lại sau';
+    isGroupChat(ctx)
+      ? await ctx.reply(errMsg, { reply_to_message_id: ctx.message.message_id })
+      : await ctx.reply(errMsg);
   }
 }
 

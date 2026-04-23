@@ -68,12 +68,52 @@ function parseUserInput(text) {
   return { network: detectedNetwork, txHash };
 }
 
+// ---------------------------------------------------------------------------
+// Amount-tier helpers
+// ---------------------------------------------------------------------------
+
 /**
- * Format transaction result into Telegram message
+ * Find the first tier whose [from, to] range contains the given amount.
+ * @param {number} amount
+ * @param {Array<{from:number, to:number, template:string}>} tiers
+ * @returns {{from:number, to:number, template:string}|null}
  */
-function formatTxMessage(tx) {
+function getAmountTier(amount, tiers) {
+  if (!Array.isArray(tiers)) return null;
+  for (const tier of tiers) {
+    if (amount >= tier.from && amount <= tier.to) {
+      return tier;
+    }
+  }
+  return null;
+}
+
+/**
+ * Replace all {placeholder} tokens in a template string.
+ * @param {string} template
+ * @param {Record<string, string>} vars
+ * @returns {string}
+ */
+function applyTemplate(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (_, key) =>
+    Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : `{${key}}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
+
+/**
+ * Format transaction result into a Telegram message.
+ *
+ * @param {object|null} tx  - Normalised tx object returned by chain adapters
+ * @param {Array<{from:number, to:number, template:string}>} [tiers] - Optional amount tiers
+ * @returns {string}
+ */
+function formatTxMessage(tx, tiers, renderTierFn) {
   if (!tx) {
-    return '❌ *Không tìm thấy giao dịch*\nVui lòng kiểm tra lại hash hoặc network.';
+    return '[!] *Không tìm thấy giao dịch*\nVui lòng kiểm tra lại hash hoặc network.';
   }
 
   const shortHash = tx.hash.length > 20
@@ -88,18 +128,40 @@ function formatTxMessage(tx) {
     ? tx.to.substring(0, 8) + '...' + tx.to.substring(tx.to.length - 8)
     : 'N/A';
 
+  const numericAmount = parseFloat(tx.amount) || 0;
+  const tier = getAmountTier(numericAmount, tiers);
+
+  if (tier && typeof renderTierFn === 'function') {
+    const vars = {
+      status:      tx.status,
+      amount:      tx.amount,
+      token:       tx.token,
+      network:     tx.network,
+      from:        shortFrom,
+      to:          shortTo,
+      toLabel:     tx.toLabel ? ` _(${tx.toLabel})_` : '',
+      timestamp:   tx.timestamp,
+      fee:         tx.fee,
+      block:       tx.block || 'N/A',
+      hash:        shortHash,
+      explorerUrl: tx.explorerUrl,
+    };
+    return renderTierFn(tier, vars);
+  }
+
+  // Default layout (no tier matched)
   return (
     `${tx.status}\n\n` +
-    `🔗 *Network:* \`${tx.network}\`\n` +
-    `🪙 *Token:* *${tx.token}*\n` +
-    `💰 *Số tiền:* *${tx.amount} ${tx.token}*\n` +
-    `👤 *Từ ví:* \`${shortFrom}\`\n` +
-    `💼 *Đến ví:* \`${shortTo}\`${tx.toLabel ? ` _(${tx.toLabel})_` : ""}\n` +
-    `🕐 *Thời gian:* ${tx.timestamp}\n` +
-    `⛽ *Phí:* ${tx.fee}\n` +
-    `📦 *Block:* ${tx.block || "N/A"}\n` +
-    `#️⃣ *Hash:* \`${shortHash}\`\n\n` +
-    `[🔍 Xem trên Explorer](${tx.explorerUrl})`
+    `- *Network:* \`${tx.network}\`\n` +
+    `- *Token:* *${tx.token}*\n` +
+    `- *Số tiền:* *${tx.amount} ${tx.token}*\n` +
+    `- *Từ ví:* \`${shortFrom}\`\n` +
+    `- *Đến ví:* \`${shortTo}\`${tx.toLabel ? ` _(${tx.toLabel})_` : ''}\n` +
+    `- *Thời gian:* ${tx.timestamp}\n` +
+    `- *Phí:* ${tx.fee}\n` +
+    `- *Block:* ${tx.block || 'N/A'}\n` +
+    `- *Hash:* \`${shortHash}\`\n\n` +
+    `[Xem trên Explorer](${tx.explorerUrl})`
   );
 }
 
@@ -108,7 +170,7 @@ function formatTxMessage(tx) {
  */
 function formatHelpMessage() {
   return (
-    `🤖 *Donkeij Check Bill Bot*\n\n` +
+    `[Donkeij Check Bill Bot](https://duonguyen.site)\n\n` +
     `Gửi *network + transaction hash* để kiểm tra giao dịch:\n\n` +
     `*Các network hỗ trợ:*\n` +
     `• \`TRC20\` / \`TRON\` — Tronscan\n` +
@@ -125,4 +187,4 @@ function formatHelpMessage() {
   );
 }
 
-module.exports = { parseUserInput, formatTxMessage, formatHelpMessage };
+module.exports = { parseUserInput, formatTxMessage, formatHelpMessage, getAmountTier };

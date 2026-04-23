@@ -23,9 +23,9 @@ bot.catch((err, ctx) => {
   console.error(`[Bot] Error for ${ctx.updateType}:`, err.message);
 });
 
-// Start bot
+// Start bot — allow messages from private chats, groups, and supergroups
 bot.launch({
-  allowedUpdates: ['message'],
+  allowedUpdates: ['message', 'edited_message'],
 }).then(() => {
   console.log('🚀 Donkeij Check Bill Bot is running...');
   console.log(`Bot: @${bot.botInfo?.username || 'unknown'}`);

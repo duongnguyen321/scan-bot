@@ -19,6 +19,12 @@ Telegram bot kiểm tra thông tin giao dịch crypto trên nhiều blockchain.
 npm install
 ```
 
+### Đăng ký bot
+
+Vào telegram, tìm `@BotFather`
+`/newbot` và điền thông tin, copy token
+`/setprivacy` chọn bot và chọn `Disable`
+
 ### 2. Tạo .env
 ```bash
 cp .env.example .env
