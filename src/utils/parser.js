@@ -128,6 +128,11 @@ function formatTxMessage(tx, tiers, renderTierFn) {
     ? tx.to.substring(0, 8) + '...' + tx.to.substring(tx.to.length - 8)
     : 'N/A';
 
+  // Full values for copyable code blocks
+  const fullHash = tx.hash;
+  const fullFrom = tx.from || 'N/A';
+  const fullTo   = tx.to   || 'N/A';
+
   const numericAmount = parseFloat(tx.amount) || 0;
   const tier = getAmountTier(numericAmount, tiers);
 
@@ -138,12 +143,15 @@ function formatTxMessage(tx, tiers, renderTierFn) {
       token:       tx.token,
       network:     tx.network,
       from:        shortFrom,
+      fromFull:    fullFrom,
       to:          shortTo,
+      toFull:      fullTo,
       toLabel:     tx.toLabel ? ` _(${tx.toLabel})_` : '',
       timestamp:   tx.timestamp,
       fee:         tx.fee,
       block:       tx.block || 'N/A',
       hash:        shortHash,
+      hashFull:    fullHash,
       explorerUrl: tx.explorerUrl,
     };
     return renderTierFn(tier, vars);
@@ -155,12 +163,12 @@ function formatTxMessage(tx, tiers, renderTierFn) {
     `- *Network:* \`${tx.network}\`\n` +
     `- *Token:* *${tx.token}*\n` +
     `- *Số tiền:* *${tx.amount} ${tx.token}*\n` +
-    `- *Từ ví:* \`${shortFrom}\`\n` +
-    `- *Đến ví:* \`${shortTo}\`${tx.toLabel ? ` _(${tx.toLabel})_` : ''}\n` +
+    `- *Từ ví:* ${shortFrom}\n  \`${fullFrom}\`\n` +
+    `- *Đến ví:* ${shortTo}${tx.toLabel ? ` _(${tx.toLabel})_` : ''}\n  \`${fullTo}\`\n` +
     `- *Thời gian:* ${tx.timestamp}\n` +
     `- *Phí:* ${tx.fee}\n` +
     `- *Block:* ${tx.block || 'N/A'}\n` +
-    `- *Hash:* \`${shortHash}\`\n\n` +
+    `- *Hash:* ${shortHash}\n  \`${fullHash}\`\n\n` +
     `[Xem trên Explorer](${tx.explorerUrl})`
   );
 }
