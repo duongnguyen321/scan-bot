@@ -78,7 +78,7 @@ function parseUserInput(text) {
  * @param {object|null} tx  - Normalised tx object returned by chain adapters
  * @returns {string}
  */
-function formatTxMessage(tx) {
+function formatTxMessage(tx, firstFrom = null) {
   if (!tx) {
     return '❌ *Không tìm thấy giao dịch*\nVui lòng kiểm tra lại hash hoặc network.';
   }
@@ -104,7 +104,7 @@ function formatTxMessage(tx) {
     } else if (numericAmount < 5000) {
       statusDisplay += '\n\n> 🍻 *TỀNH TÀNG THẾ THÔI*';
     } else {
-      statusDisplay += "\n\n> 🎉 *CHÚC ĐẠI GIA NNGÀY MỚI 8386 * 🚀";
+      statusDisplay += "\n\n> 🎉 *CHÚC ĐẠI GIA NGÀY MỚI 8386 * 🚀";
     }
   }
 
@@ -117,8 +117,9 @@ function formatTxMessage(tx) {
     `💼 Đến ví: \`${shortTo}\`${tx.toLabel ? ` (${tx.toLabel})` : ''}\n` +
     `🕐 Thời gian: ${tx.timestamp}\n` +
     `⛽ Phí: ${tx.fee}\n` +
-    `📦 Block: ${tx.block || 'N/A'}\n` +
+    // `📦 Block: ${tx.block || 'N/A'}\n` +  // kept for future use
     `#️⃣ Hash: \`${shortHash}\`\n\n` +
+    `*👤 Người gửi đầu tiên: \`${firstFrom || 'N/A'}\`*\n\n` +
     `🔍 [Xem trên Explorer](${tx.explorerUrl})`
   );
 }

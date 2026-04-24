@@ -1,6 +1,7 @@
 const { getTronTransaction } = require('../chains/tron');
 const { getEvmTransaction } = require('../chains/evm');
 const { parseUserInput, formatTxMessage, formatHelpMessage } = require('../utils/parser');
+const { registerFirst, markDone, getEntry, getFirstUsername } = require('../utils/hashCache');
 
 const EVM_NETWORKS = new Set(['ETH', 'BEP20', 'POLYGON', 'ARBITRUM']);
 
@@ -53,6 +54,27 @@ async function handleTxMessage(ctx) {
 
   const { network, txHash } = parsed;
 
+  // Resolve identifier: prefer the group/channel @handle; fall back to user @handle
+  const senderUsername =
+    ctx.chat?.username
+      ? `@${ctx.chat.username}`
+      : ctx.from?.username
+      ? `@${ctx.from.username}`
+      : ctx.from?.first_name || 'Unknown';
+
+  // Register this user as first sender (no-op if hash already seen)
+  registerFirst(txHash, senderUsername);
+
+  // The FIRST person who ever sent this hash
+  const firstFrom = getFirstUsername(txHash);
+
+  // If the tx was already confirmed done, return cached result immediately
+  const cached = getEntry(txHash);
+  if (cached?.done) {
+    const cachedMsg = formatTxMessage(cached.txData, firstFrom);
+    return smartReply(ctx, cachedMsg);
+  }
+
   // Send loading indicator (reply-style in groups)
   const loadingMsg = isGroupChat(ctx)
     ? await ctx.reply('Đang kiểm tra giao dịch...', {
@@ -81,7 +103,12 @@ async function handleTxMessage(ctx) {
 
     await ctx.deleteMessage(loadingMsg.message_id).catch(() => {});
 
-    const message = formatTxMessage(txData);
+    // Mark done + persist to JSON log when tx is confirmed successful
+    if (txData?.status?.includes('Thành công')) {
+      markDone(txHash, txData.status, txData);
+    }
+
+    const message = formatTxMessage(txData, firstFrom);
     await smartReply(ctx, message);
   } catch (err) {
     await ctx.deleteMessage(loadingMsg.message_id).catch(() => {});
