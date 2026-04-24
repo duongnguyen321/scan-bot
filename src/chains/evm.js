@@ -61,22 +61,45 @@ function fromWei(value, decimals = 18) {
   return (parseFloat(value) / Math.pow(10, decimals)).toFixed(6);
 }
 
+const RATE_LIMIT_RE = /rate limit/i;
+const MAX_RETRIES = 4;
+
 async function etherscanRequest(chain, apiKey, params) {
   return etherscanLimiter.enqueue(async () => {
-    const response = await axios.get(chain.apiUrl, {
-      params: {
-        chainid: chain.chainId,
-        ...params,
-        apikey: apiKey,
-      },
-      timeout: 10000,
-    });
+    let lastErr;
 
-    if (response.data?.status === '0' && response.data?.message === 'NOTOK') {
-      throw new Error(response.data.result || 'Explorer API request failed');
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        // Exponential backoff: 500ms, 1s, 2s, 4s
+        const delay = 500 * Math.pow(2, attempt - 1);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      const response = await axios.get(chain.apiUrl, {
+        params: {
+          chainid: chain.chainId,
+          ...params,
+          apikey: apiKey,
+        },
+        timeout: 10000,
+      });
+
+      if (response.data?.status === '0' && response.data?.message === 'NOTOK') {
+        const msg = response.data.result || 'Explorer API request failed';
+
+        // Rate-limit response — retry after backoff
+        if (RATE_LIMIT_RE.test(msg)) {
+          lastErr = new Error(msg);
+          continue;
+        }
+
+        throw new Error(msg);
+      }
+
+      return response.data?.result;
     }
 
-    return response.data?.result;
+    throw lastErr;
   });
 }
 
