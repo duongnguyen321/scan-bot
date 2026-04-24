@@ -1,4 +1,8 @@
 const axios = require('axios');
+const { createRateLimiter } = require('../utils/rateLimiter');
+
+/** Shared limiter: Etherscan v2 allows max 3 calls / sec on free tier */
+const etherscanLimiter = createRateLimiter(3);
 
 const EVM_CHAINS = {
   ETH: {
@@ -58,20 +62,22 @@ function fromWei(value, decimals = 18) {
 }
 
 async function etherscanRequest(chain, apiKey, params) {
-  const response = await axios.get(chain.apiUrl, {
-    params: {
-      chainid: chain.chainId,
-      ...params,
-      apikey: apiKey,
-    },
-    timeout: 10000,
+  return etherscanLimiter.enqueue(async () => {
+    const response = await axios.get(chain.apiUrl, {
+      params: {
+        chainid: chain.chainId,
+        ...params,
+        apikey: apiKey,
+      },
+      timeout: 10000,
+    });
+
+    if (response.data?.status === '0' && response.data?.message === 'NOTOK') {
+      throw new Error(response.data.result || 'Explorer API request failed');
+    }
+
+    return response.data?.result;
   });
-
-  if (response.data?.status === '0' && response.data?.message === 'NOTOK') {
-    throw new Error(response.data.result || 'Explorer API request failed');
-  }
-
-  return response.data?.result;
 }
 
 function parseErc20Address(topicValue, fallback) {

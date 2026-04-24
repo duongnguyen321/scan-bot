@@ -1,4 +1,8 @@
 const axios = require('axios');
+const { createRateLimiter } = require('../utils/rateLimiter');
+
+/** Tronscan free tier is more generous; 5/sec is a safe ceiling */
+const tronLimiter = createRateLimiter(5);
 
 const BASE_URL = 'https://apilist.tronscanapi.com/api';
 
@@ -28,11 +32,13 @@ function getTronscanHeaders() {
 async function getTronTransaction(txHash) {
   try {
     const headers = getTronscanHeaders();
-    const txRes = await axios.get(`${BASE_URL}/transaction-info`, {
-      params: { hash: txHash },
-      headers,
-      timeout: 10000,
-    });
+    const txRes = await tronLimiter.enqueue(() =>
+      axios.get(`${BASE_URL}/transaction-info`, {
+        params: { hash: txHash },
+        headers,
+        timeout: 10000,
+      })
+    );
 
     const tx = txRes.data;
     if (!tx || (!tx.hash && !tx.txID)) return null;
